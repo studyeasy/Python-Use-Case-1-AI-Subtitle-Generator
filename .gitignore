@@ -14,8 +14,10 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# NOTE: no bare "lib/" or "lib64/" here on purpose. Those patterns also match
+# frontend/src/lib/ and would silently drop api.ts & srt.ts from the repo,
+# breaking every fresh clone's frontend build. Python virtualenv lib dirs are
+# already covered by venv/ env/ ENV/ below.
 parts/
 sdist/
 var/
