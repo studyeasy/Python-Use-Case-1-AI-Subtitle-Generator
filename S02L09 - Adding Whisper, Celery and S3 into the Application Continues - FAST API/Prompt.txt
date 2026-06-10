@@ -1,0 +1,9 @@
+all right, scan the application. The application has a front end for a UI where we can drop the video and audio and get the SRT file, but as of now there is no support for Wispr. There is no support for S3, and there is no Celery integration as well.
+
+This is what I want to do:
+
+1. Add support for Wispr. Which Wispr model needs to be used? That configuration will go to the.env file.
+
+2. The task needs to be pulled on the UI. We should know what is going on, and the task needs to be done by Celery. It needs to be a background process.
+
+3. When the application is done processing, we will save the data in our S3 bucket. The user may log in later down the line to see his translations and subtitles. He can download and view the subtitle files, and that is it.

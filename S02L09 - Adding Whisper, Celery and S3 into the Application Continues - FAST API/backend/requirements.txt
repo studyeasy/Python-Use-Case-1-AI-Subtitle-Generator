@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+pydantic[email]
+email-validator
+boto3
+python-jose[cryptography]
+python-multipart
+sqlalchemy
+celery[redis]
+redis
+flower
+faster-whisper

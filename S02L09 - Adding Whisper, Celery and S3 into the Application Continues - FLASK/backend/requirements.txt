@@ -1,0 +1,19 @@
+flask
+flask-smorest
+flask-cors
+marshmallow
+pydantic-settings
+# AWS Cognito: boto3 talks to the cognito-idp API.
+boto3
+# JWT validation against Cognito's JWKS.
+python-jose[cryptography]
+gunicorn
+# Background task queue.
+celery[redis]
+redis
+# Celery monitoring UI.
+flower
+# ORM for the projects table.
+sqlalchemy
+# Speech-to-text (CTranslate2-based Whisper).
+faster-whisper

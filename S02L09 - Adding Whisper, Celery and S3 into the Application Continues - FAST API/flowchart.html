@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Subly — Application Flow</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --ink-900: #0f172a;
+    --ink-700: #334155;
+    --ink-500: #64748b;
+    --ink-200: #e2e8f0;
+    --ink-100: #f1f5f9;
+    --brand-50: #eef2ff;
+    --brand-500: #6366f1;
+    --brand-700: #4338ca;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink-900);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Plus Jakarta Sans",
+      "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    border-bottom: 1px solid var(--ink-200);
+    padding: 28px 32px;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 28px;
+    letter-spacing: -0.01em;
+  }
+  header p {
+    margin: 6px 0 0;
+    color: var(--ink-500);
+    font-size: 14px;
+  }
+  main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px;
+    display: grid;
+    gap: 28px;
+  }
+  section {
+    border: 1px solid var(--ink-200);
+    border-radius: 16px;
+    background: #fff;
+    padding: 24px;
+  }
+  section h2 {
+    margin: 0 0 4px;
+    font-size: 18px;
+    color: var(--ink-900);
+  }
+  section p.lead {
+    margin: 0 0 18px;
+    color: var(--ink-500);
+    font-size: 13.5px;
+  }
+  .diagram {
+    background: var(--ink-100);
+    border-radius: 12px;
+    padding: 18px;
+    overflow-x: auto;
+  }
+  .diagram .mermaid {
+    background: transparent;
+    text-align: center;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  table th, table td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--ink-100);
+    vertical-align: top;
+  }
+  table th {
+    background: var(--ink-100);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-500);
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, "Menlo", "Cascadia Code", monospace;
+    background: var(--ink-100);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 12.5px;
+  }
+  footer {
+    color: var(--ink-500);
+    font-size: 12px;
+    text-align: center;
+    padding: 32px;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Subly — Application Flow</h1>
+    <p>How a user's media file becomes a downloadable SRT, end to end.</p>
+  </header>
+
+  <main>
+    <section>
+      <h2>The simple version</h2>
+      <p class="lead">
+        Five steps. This is everything you need to hold in your head.
+      </p>
+      <div class="diagram">
+        <pre class="mermaid">
+flowchart LR
+    A["👤 User<br/>uploads a video"]
+    B["☁️ Saved to S3"]
+    C["⚙️ Background worker<br/>runs Whisper"]
+    D["📝 SRT saved<br/>back to S3"]
+    E["⬇️ User downloads<br/>the SRT"]
+
+    A --> B --> C --> D --> E
+        </pre>
+      </div>
+      <p class="lead" style="margin-top:14px">
+        While the worker is busy, the page asks the server every 2 seconds
+        <em>"are we there yet?"</em> and shows a progress bar.
+      </p>
+    </section>
+
+    <section>
+      <h2>1. Architecture (one box per piece)</h2>
+      <p class="lead">
+        Browser → API → (queue + worker) → S3. Database tracks progress.
+      </p>
+      <div class="diagram">
+        <pre class="mermaid">
+flowchart LR
+    Browser["🌐 Browser<br/>(Next.js)"]
+    API["🚀 FastAPI"]
+    Queue[("📮 Redis<br/>queue")]
+    Worker["⚙️ Celery worker<br/>+ Whisper"]
+    DB[("🗄️ SQLite<br/>project status")]
+    S3[("☁️ S3<br/>files + SRTs")]
+
+    Browser -- "upload / poll / download" --> API
+    API -- "save file" --> S3
+    API -- "save row" --> DB
+    API -- "enqueue job" --> Queue
+    Queue --> Worker
+    Worker -- "fetch file" --> S3
+    Worker -- "save SRT" --> S3
+    Worker -- "update progress" --> DB
+    API -- "read status" --> DB
+        </pre>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. Sequence — what happens in time order</h2>
+      <p class="lead">
+        After the upload, the browser polls and the worker transcribes — in parallel.
+      </p>
+      <div class="diagram">
+        <pre class="mermaid">
+sequenceDiagram
+    actor User
+    participant FE as Browser
+    participant API as API
+    participant W as Worker
+    participant S3 as S3
+
+    User->>FE: choose file, click Upload
+    FE->>API: POST /projects (file)
+    API->>S3: save file
+    API->>W: queue job
+    API-->>FE: project id
+
+    loop every 2s
+        FE->>API: status?
+        API-->>FE: "still working… 47%"
+    end
+
+    W->>S3: fetch file
+    W->>W: run Whisper, build SRT
+    W->>S3: save SRT
+    W->>API: mark COMPLETED
+
+    FE->>API: status?
+    API-->>FE: "done"
+    User->>FE: click Download
+    FE->>S3: GET SRT
+    S3-->>User: file.srt
+        </pre>
+      </div>
+    </section>
+
+    <section>
+      <h2>3. Project status machine</h2>
+      <p class="lead">
+        The <code>status</code> column on the <code>projects</code> table moves through these
+        states. The UI's polling stops as soon as it lands in a terminal state.
+      </p>
+      <div class="diagram">
+        <pre class="mermaid">
+stateDiagram-v2
+    [*] --> PENDING: row created
+    PENDING --> QUEUED: task enqueued
+    QUEUED --> TRANSCRIBING: worker picks up
+    TRANSCRIBING --> TRANSCRIBING: progress 0→99
+    TRANSCRIBING --> COMPLETED: SRT uploaded
+    TRANSCRIBING --> FAILED: exception (S3, Whisper, ffmpeg…)
+    QUEUED --> FAILED: task lost / worker crash
+    COMPLETED --> [*]
+    FAILED --> [*]
+        </pre>
+      </div>
+    </section>
+
+    <section>
+      <h2>4. Where each piece of state lives</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>State</th>
+            <th>Lives in</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>User identity (JWT)</td>
+            <td>AWS Cognito + browser <code>localStorage</code></td>
+            <td>Validated on every API call via <code>get_current_user</code>.</td>
+          </tr>
+          <tr>
+            <td>Project rows (status, progress, S3 keys)</td>
+            <td>SQLite at <code>/data/subly.db</code></td>
+            <td>Shared docker volume between API and worker containers.</td>
+          </tr>
+          <tr>
+            <td>Uploaded source media</td>
+            <td>S3 <code>uploads/{project_id}/&lt;filename&gt;</code></td>
+            <td>Deleted with the project row.</td>
+          </tr>
+          <tr>
+            <td>Generated SRT</td>
+            <td>S3 <code>subtitles/{project_id}/&lt;stem&gt;.srt</code></td>
+            <td>Served to the browser via a 15-minute presigned GET URL.</td>
+          </tr>
+          <tr>
+            <td>Task queue + task results</td>
+            <td>Redis (<code>redis:6379/0</code> and <code>/1</code>)</td>
+            <td>Celery broker + result backend.</td>
+          </tr>
+          <tr>
+            <td>Whisper model weights</td>
+            <td>Docker volume <code>subly-whisper-cache</code></td>
+            <td>Downloaded once on first transcription (~470 MB for <code>small</code>).</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer>
+    Subly architecture · open this file in any modern browser.
+  </footer>
+
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "default",
+      themeVariables: {
+        fontFamily:
+          '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Plus Jakarta Sans", sans-serif',
+        primaryColor: "#eef2ff",
+        primaryTextColor: "#0f172a",
+        primaryBorderColor: "#6366f1",
+        lineColor: "#64748b",
+        secondaryColor: "#f1f5f9",
+        tertiaryColor: "#ffffff",
+      },
+      flowchart: { curve: "basis", htmlLabels: true },
+      sequence: { showSequenceNumbers: false, mirrorActors: false },
+    });
+  </script>
+</body>
+</html>

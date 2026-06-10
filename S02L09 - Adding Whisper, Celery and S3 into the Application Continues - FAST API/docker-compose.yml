@@ -1,0 +1,120 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: subly-redis
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: ./backend
+      args:
+        WHISPER_MODEL: ${WHISPER_MODEL:-tiny}
+        WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+        WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+        HF_TOKEN: ${HF_TOKEN:-}
+    container_name: subly-backend
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8000"
+      DEBUG: "false"
+      AWS_REGION: ${AWS_REGION:-eu-west-2}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      COGNITO_USER_POOL_ID: ${COGNITO_USER_POOL_ID:-}
+      COGNITO_APP_CLIENT_ID: ${COGNITO_APP_CLIENT_ID:-}
+      COGNITO_APP_CLIENT_SECRET: ${COGNITO_APP_CLIENT_SECRET:-}
+      COGNITO_AUTH_FLOW: ${COGNITO_AUTH_FLOW:-USER_PASSWORD_AUTH}
+      COGNITO_TOKEN_USE: ${COGNITO_TOKEN_USE:-access}
+      COGNITO_GROUPS_CLAIM: ${COGNITO_GROUPS_CLAIM:-cognito:groups}
+      COGNITO_AUTO_CONFIRM_SIGN_UP: ${COGNITO_AUTO_CONFIRM_SIGN_UP:-false}
+      COGNITO_ISSUER_OVERRIDE: ${COGNITO_ISSUER_OVERRIDE:-}
+      COGNITO_JWKS_URL_OVERRIDE: ${COGNITO_JWKS_URL_OVERRIDE:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_UPLOAD_PREFIX: ${S3_UPLOAD_PREFIX:-uploads/}
+      S3_SUBTITLE_PREFIX: ${S3_SUBTITLE_PREFIX:-subtitles/}
+      S3_PRESIGN_TTL_SECONDS: ${S3_PRESIGN_TTL_SECONDS:-900}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/subly.db}
+      WHISPER_MODEL: ${WHISPER_MODEL:-tiny}
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    depends_on:
+      - redis
+
+  worker:
+    build:
+      context: ./backend
+      args:
+        WHISPER_MODEL: ${WHISPER_MODEL:-tiny}
+        WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+        WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+        HF_TOKEN: ${HF_TOKEN:-}
+    container_name: subly-worker
+    command: celery -A app.celery_app worker -l info --concurrency=1
+    environment:
+      AWS_REGION: ${AWS_REGION:-eu-west-2}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_UPLOAD_PREFIX: ${S3_UPLOAD_PREFIX:-uploads/}
+      S3_SUBTITLE_PREFIX: ${S3_SUBTITLE_PREFIX:-subtitles/}
+      S3_PRESIGN_TTL_SECONDS: ${S3_PRESIGN_TTL_SECONDS:-900}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/subly.db}
+      WHISPER_MODEL: ${WHISPER_MODEL:-tiny}
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+    volumes:
+      - ./data:/data
+      - subly-whisper-cache:/root/.cache/huggingface
+    depends_on:
+      - redis
+
+  flower:
+    build:
+      context: ./backend
+      args:
+        WHISPER_MODEL: ${WHISPER_MODEL:-tiny}
+        WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+        WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+        HF_TOKEN: ${HF_TOKEN:-}
+    container_name: subly-flower
+    command: celery -A app.celery_app flower --port=5555 --basic_auth=${FLOWER_BASIC_AUTH:-admin:admin}
+    environment:
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      FLOWER_BASIC_AUTH: ${FLOWER_BASIC_AUTH:-admin:admin}
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+      - worker
+
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    container_name: subly-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  subly-whisper-cache:

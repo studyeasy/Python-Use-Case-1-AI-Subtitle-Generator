@@ -1,0 +1,49 @@
+Re-audit and fix the existing Docker + backend + frontend + Keycloak setup.
+
+Issues:
+- Backend does not start.
+- Frontend currently uses Keycloak-hosted auth pages.
+- I need custom React login, signup, logout, and profile pages.
+- Frontend must never talk directly to Keycloak.
+- Backend must sit between React and Keycloak.
+- Keycloak startup warnings should be fixed where possible.
+
+Required flow:
+
+React custom auth UI → Backend auth APIs → Keycloak  
+Backend validates tokens/session → Frontend uses backend auth result
+
+Tasks:
+1. Fix backend startup.
+2. Fix Dockerfile and docker-compose.yml.
+3. Fix Keycloak configuration and startup warnings where possible.
+4. Remove direct Keycloak integration from React.
+5. Add/verify backend APIs:
+
+   POST /auth/register
+   POST /auth/login
+   POST /auth/logout
+   GET /auth/me
+   GET /health
+
+6. Backend must communicate with Keycloak internally.
+7. Backend must validate JWT/access tokens.
+8. Frontend must call only backend APIs.
+9. Frontend must send tokens as:
+
+   Authorization: Bearer <access_token>
+
+10. Protect frontend routes for logged-in users only.
+11. Update README with setup steps, env vars, test credentials, API endpoints, Docker commands, and troubleshooting.
+
+Verification:
+- Do not rebuild the whole app from scratch.
+- Keep the existing implementation and fix it cleanly.
+- Run:
+
+   docker compose up --build
+
+- Test backend, frontend, Keycloak, register, login, /auth/me, logout, and protected routes.
+- Come back only when everything is running and ready to test.
+- Summarize exactly which files changed and why.
+- Mention any remaining warnings or limitations.
